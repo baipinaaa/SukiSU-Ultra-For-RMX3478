@@ -1,0 +1,26 @@
+--- a/kernel/module.c	2026-08-21 19:39:44.927922500 +0800
++++ b/kernel/module.c	2026-08-21 19:39:51.622423700 +0800
+@@ -1335,17 +1335,18 @@
+ 			return 1;
+ 		pr_debug("Found checksum %X vs module %lX\n",
+ 			 crcval, versions[i].crc);
+-		goto bad_version;
++		/* [ReSukiSU] 跳过 modversions CRC 校验:
++		 * 自编译内核无法复现官方编译器 (clang21/LTO/LLD) 生成的
++		 * struct 布局 CRC (如 module_layout), 而 vendor 分区预编译
++		 * 模块 (qca_cld3_wlan.ko/btpower/adsp/q6 等) 带官方 CRC,
++		 * 直接放行; 符号存在性仍由 find_symbol 保证。 */
++		return 1;
+ 	}
+ 
+ 	/* Broken toolchain. Warn once, then let it go.. */
+ 	pr_warn_once("%s: no symbol version for %s\n", info->name, symname);
+ 	return 1;
+ 
+-bad_version:
+-	pr_warn("%s: disagrees about version of symbol %s\n",
+-	       info->name, symname);
+-	return 0;
+ }
+ 
+ static inline int check_modstruct_version(const struct load_info *info,

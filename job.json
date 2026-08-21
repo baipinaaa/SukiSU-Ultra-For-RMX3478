@@ -1,0 +1,196 @@
+{
+  "id": 95970446163,
+  "run_id": 32220686428,
+  "workflow_name": "Build SukiSU Kernel for oscar",
+  "head_branch": "main",
+  "run_url": "https://api.github.com/repos/baipinaaa/SukiSU-Ultra-For-RMX3478/actions/runs/32220686428",
+  "run_attempt": 1,
+  "node_id": "CR_kwDOT8_TNM8AAAAWWEjLUw",
+  "head_sha": "48a4758a2eebfc4a23758567a6c574b5ee44318e",
+  "url": "https://api.github.com/repos/baipinaaa/SukiSU-Ultra-For-RMX3478/actions/jobs/95970446163",
+  "html_url": "https://github.com/baipinaaa/SukiSU-Ultra-For-RMX3478/actions/runs/32220686428/job/95970446163",
+  "status": "completed",
+  "conclusion": "failure",
+  "created_at": "2026-08-19T05:46:24Z",
+  "started_at": "2026-08-19T05:46:27Z",
+  "completed_at": "2026-08-19T05:58:17Z",
+  "name": "build",
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-08-19T05:46:28Z",
+      "completed_at": "2026-08-19T05:46:31Z"
+    },
+    {
+      "name": "恢复内核源码缓存",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-08-19T05:46:31Z",
+      "completed_at": "2026-08-19T05:46:39Z"
+    },
+    {
+      "name": "下载 oscar 内核源码 (LineageOS)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 3,
+      "started_at": "2026-08-19T05:46:39Z",
+      "completed_at": "2026-08-19T05:46:39Z"
+    },
+    {
+      "name": "保存内核源码缓存",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 4,
+      "started_at": "2026-08-19T05:46:39Z",
+      "completed_at": "2026-08-19T05:46:39Z"
+    },
+    {
+      "name": "安装编译依赖",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-08-19T05:46:39Z",
+      "completed_at": "2026-08-19T05:47:29Z"
+    },
+    {
+      "name": "恢复 AOSP Clang 缓存",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-08-19T05:47:29Z",
+      "completed_at": "2026-08-19T05:47:30Z"
+    },
+    {
+      "name": "下载 AOSP Clang (sparse checkout, 只拉 clang-r510928)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 7,
+      "started_at": "2026-08-19T05:47:30Z",
+      "completed_at": "2026-08-19T05:47:30Z"
+    },
+    {
+      "name": "保存 AOSP Clang 缓存",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 8,
+      "started_at": "2026-08-19T05:47:30Z",
+      "completed_at": "2026-08-19T05:47:30Z"
+    },
+    {
+      "name": "集成 SukiSU-Ultra (锁定 5a2bb7e5)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 9,
+      "started_at": "2026-08-19T05:47:30Z",
+      "completed_at": "2026-08-19T05:47:32Z"
+    },
+    {
+      "name": "修复高通 TRACE_INCLUDE_PATH (clang 兼容)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 10,
+      "started_at": "2026-08-19T05:47:32Z",
+      "completed_at": "2026-08-19T05:47:34Z"
+    },
+    {
+      "name": "恢复 ccache",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 11,
+      "started_at": "2026-08-19T05:47:34Z",
+      "completed_at": "2026-08-19T05:47:34Z"
+    },
+    {
+      "name": "配置内核 (holi-qgki defconfig + SukiSU 开关)",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 12,
+      "started_at": "2026-08-19T05:47:34Z",
+      "completed_at": "2026-08-19T05:47:39Z"
+    },
+    {
+      "name": "编译内核 (ccache 加速)",
+      "status": "completed",
+      "conclusion": "failure",
+      "number": 13,
+      "started_at": "2026-08-19T05:47:39Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "恢复原版 boot.img 缓存",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 14,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "从 LineageOS nightly 提取原版 boot.img (拿 ramdisk)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 15,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "保存原版 boot.img 缓存",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 16,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "解包原 boot + 打包 new_boot.img",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 17,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "验证产物",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 18,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "保存 ccache (构建成功才更新，供下次加速)",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 19,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "上传产物",
+      "status": "completed",
+      "conclusion": "skipped",
+      "number": 20,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 21,
+      "started_at": "2026-08-19T05:58:10Z",
+      "completed_at": "2026-08-19T05:58:10Z"
+    }
+  ],
+  "check_run_url": "https://api.github.com/repos/baipinaaa/SukiSU-Ultra-For-RMX3478/check-runs/95970446163",
+  "labels": [
+    "ubuntu-22.04"
+  ],
+  "runner_id": 1000000762,
+  "runner_name": "GitHub Actions 1000000762",
+  "runner_group_id": 0,
+  "runner_group_name": "GitHub Actions"
+}

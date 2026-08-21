@@ -1,0 +1,307 @@
+# ============================================================
+# SukiSU-Ultra 内核构建 — Realme Q5 / 9 5G (oscar, RMX3478)
+# 平台: SM6375 (holi) | 内核: 5.4 QGKI | LineageOS 23.2
+#
+# 用法:
+#   1. 在 GitHub 新建仓库，把本文件放到 .github/workflows/ 下并 push
+#   2. Actions 页面 → Build SukiSU Kernel for oscar → Run workflow
+#      (los_date 填你手机当前系统 nightly 的日期，必须一致！)
+#   3. 构建完成(约 40-90 分钟)后下载 artifact: new_boot.img
+#   4. fastboot 双槽刷入 (见 README.md)
+#
+# 缓存策略 (Actions 页面 → Cache 可查看，GitHub 自动淘汰旧条目):
+#   - clang 工具链 / 内核源码: 固定 key，首次下载后永久复用
+#   - boot.img (nightly): 按 los_date 缓存，同日期只下载一次
+#   - ccache 编译缓存: 每次成功构建后更新，二次构建大幅提速
+# ============================================================
+name: Build SukiSU Kernel for oscar
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_branch:
+        description: '内核分支 (默认 lineage-23.2，对应你刷的 LineageOS 23.2)'
+        required: true
+        type: string
+        default: 'lineage-23.2'
+      los_version:
+        description: 'LineageOS 版本 (用于 nightly 下载链接)'
+        required: true
+        type: string
+        default: '23.2'
+      los_date:
+        description: 'LineageOS nightly 日期 YYYYMMDD (必须与你手机当前系统一致!)'
+        required: true
+        type: string
+        default: '20260817'
+      ksu_commit:
+        description: 'SukiSU-Ultra commit hash (默认锁定 v4.1.3-5a2bb7e5，勿改——main 已重构为新结构，oscar 5.4 编不过)'
+        required: false
+        type: string
+        default: '5a2bb7e5813002ccaabe02fa864cfb2dde6b5109'
+      enable_kpm:
+        description: '启用 KPM (KernelPatch 内核模块支持)'
+        type: boolean
+        default: true
+      custom_version:
+        description: '自定义版本名 (可选，显示在 uname -r)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  DEVICE: 'oscar'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      # ============ 1. 内核源码 (缓存) ============
+      - name: 恢复内核源码缓存
+        id: cache-kernel
+        uses: actions/cache/restore@v6
+        with:
+          path: kernel
+          key: kernel-oscar-${{ github.event.inputs.kernel_branch }}
+
+      - name: 下载 oscar 内核源码 (LineageOS)
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch "${{ github.event.inputs.kernel_branch }}" \
+            https://github.com/LineageOS/android_kernel_realme_sm6375 kernel
+          echo "内核分支: ${{ github.event.inputs.kernel_branch }}"
+          ls kernel/arch/arm64/configs/vendor/ | grep holi
+
+      - name: 保存内核源码缓存
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: kernel
+          key: kernel-oscar-${{ github.event.inputs.kernel_branch }}
+
+      # ============ 2. 编译依赖 ============
+      - name: 安装编译依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git make gcc flex bison bc cpio lz4 xz-utils \
+            libssl-dev libncurses-dev libelf-dev device-tree-compiler \
+            binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu ccache zip unzip
+
+      # ============ 3. AOSP Clang (缓存) ============
+      - name: 恢复 AOSP Clang 缓存
+        id: cache-clang
+        uses: actions/cache/restore@v6
+        with:
+          path: clang
+          key: clang-oscar-r510928-v1
+
+      - name: 下载 AOSP Clang (sparse checkout, 只拉 clang-r510928)
+        if: steps.cache-clang.outputs.cache-hit != 'true'
+        run: |
+          # sparse + blob:none 只下载需要的 clang 版本目录 (~1.5GB)
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang
+          cd clang
+          git sparse-checkout set clang-r510928
+          clang-r510928/bin/clang --version | head -1
+          # 诊断: 确认链接器情况
+          ls clang-r510928/bin/ | grep -E "^(clang|ld|lld)" | head || echo "!! bin 目录缺少预期工具"
+          # 兜底: 安装系统 lld (提供 /usr/bin/ld.lld)
+          sudo apt-get install -y lld || true
+
+      - name: 保存 AOSP Clang 缓存
+        if: steps.cache-clang.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: clang
+          key: clang-oscar-r510928-v1
+
+      # ============ 4. SukiSU 集成 (锁定旧版 commit) ============
+      # 注意: 不用 setup.sh —— 它会 git pull 到最新 main (已重构为新结构,
+      # oscar 5.4 无法编译) 且 checkout 旧 commit 在浅克隆下会失败。
+      # 这里手动集成: clone 指定 commit + 建 symlink + 改 Makefile/Kconfig。
+      - name: 集成 SukiSU-Ultra (锁定 5a2bb7e5)
+        run: |
+          cd kernel
+          KSU_REF="${{ github.event.inputs.ksu_commit }}"
+          [ -z "$KSU_REF" ] && KSU_REF="5a2bb7e5813002ccaabe02fa864cfb2dde6b5109"
+          echo "SukiSU ref: $KSU_REF"
+          # 缓存恢复后 KernelSU 可能已存在，先删再 clone
+          rm -rf KernelSU
+          git clone --depth 1 https://github.com/SukiSU-Ultra/SukiSU-Ultra KernelSU
+          cd KernelSU
+          if [[ "$KSU_REF" =~ ^[0-9a-f]{7,40}$ && "$KSU_REF" != "main" ]]; then
+            git fetch origin "$KSU_REF" --depth 1
+            git checkout FETCH_HEAD
+          else
+            git checkout "$KSU_REF" 2>/dev/null || true
+          fi
+          echo "SukiSU commit: $(git log --oneline -1)"
+          ls kernel_includes.h kernel/ksu.c && echo "结构正确 (旧版 drivers 结构)"
+          cd ..
+          # 手动集成 (等价 setup.sh 效果)
+          ln -sfn "$(realpath --relative-to=drivers KernelSU/kernel)" drivers/kernelsu
+          grep -q "kernelsu" drivers/Makefile || printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> drivers/Makefile
+          grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig || sed -i "/endmenu/i\source \"drivers/kernelsu/Kconfig\"" drivers/Kconfig
+          echo "--- 检查 SukiSU 源码是否集成 ---"
+          ls -la drivers/kernelsu/ | head -8
+          grep -n "kernelsu" drivers/Makefile
+
+      # ============ 5. 修复高通 trace include (clang 兼容) ============
+      - name: 修复高通 TRACE_INCLUDE_PATH (clang 兼容)
+        run: |
+          cd kernel
+          # 高通 trace.h 的 TRACE_INCLUDE_PATH 用相对路径 (如 "." / "../..")，
+          # define_trace.h 展开成 #include "<路径>/<FILE>.h"——clang 不搜索
+          # "主源文件所在目录"，相对路径全部解析不到。统一改为相对内核根的
+          # 目录路径 + 纯文件名 (语义等价)。
+          # 形态1: PATH=. FILE=纯名        (walt/rmnet/sde)
+          # 形态2: PATH=. FILE=带路径      (cam_trace, FILE 需取 basename)
+          # 形态3: PATH=../.. 带路径       (rndis_ipa/ipa_v3)
+          grep -rln --exclude-dir=.git "#define TRACE_INCLUDE_PATH" \
+            --include="*.h" . 2>/dev/null | while read f; do
+            # 只修以 . 或 .. 开头(相对路径)的 PATH
+            if grep -qE "^#define TRACE_INCLUDE_PATH \.\.?(/.*)?$" "$f"; then
+              dir=$(dirname "$f" | sed 's|^\./||')
+              [ "$dir" = "." ] && dir=""
+              file=$(grep -m1 "^#define TRACE_INCLUDE_FILE" "$f" | sed 's|.*#define TRACE_INCLUDE_FILE *||; s| *$||')
+              base=$(basename "$file")
+              sed -i "s|^#define TRACE_INCLUDE_PATH .*|#define TRACE_INCLUDE_PATH $dir|" "$f"
+              sed -i "s|^#define TRACE_INCLUDE_FILE .*|#define TRACE_INCLUDE_FILE $base|" "$f"
+              echo "patched: $f  (PATH=$dir FILE=$base)"
+            else
+              echo "skip:    $f (PATH 已是根相对路径)"
+            fi
+          done
+          echo "--- 验证 ---"
+          grep -n "TRACE_INCLUDE" kernel/sched/walt/trace.h
+          grep -n "TRACE_INCLUDE" techpack/camera/drivers/cam_utils/cam_trace.h
+
+      # ============ 6. 配置 + 编译 ============
+      # 注意: 编译命令带 KCFLAGS=-I. —— 高通源码里的相对 include (如
+      # arch/arm64/kernel/trace-events-emulation.h) 需要内核根在搜索路径中；
+      # -I. 在搜索链末尾，不会影响正常 include。
+      - name: 恢复 ccache
+        id: cache-ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.ccache
+          key: ccache-oscar-${{ github.event.inputs.kernel_branch }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-oscar-${{ github.event.inputs.kernel_branch }}-
+
+      - name: 配置内核 (holi-qgki defconfig + SukiSU 开关)
+        run: |
+          cd kernel
+          export PATH=$PWD/../clang/clang-r510928/bin:$PATH
+          # 用 clang 作为 CC + GNU 交叉工具链 (binutils-aarch64-linux-gnu)，不需要 ld.lld，最稳
+          make ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS=-I. vendor/holi-qgki_defconfig
+          # 强制开启 SukiSU/KernelPatch 相关配置 (符号不存在时忽略)
+          # 注意: KSU_SUSFS 必须关闭 —— 内核未集成 susfs4ksu，开着会在
+          # kernel_includes.h:77 include linux/susfs.h 编译失败
+          ./scripts/config -e KSU -e KALLSYMS -e KALLSYMS_ALL -d KSU_SUSFS || true
+          if [ "${{ github.event.inputs.enable_kpm }}" = "true" ]; then
+            ./scripts/config -e KPM
+          fi
+          if [ -n "${{ github.event.inputs.custom_version }}" ]; then
+            ./scripts/config --set-str LOCALVERSION "-${{ github.event.inputs.custom_version }}"
+          fi
+          make ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS=-I. olddefconfig
+          echo "--- 配置验证 ---"
+          grep -E "CONFIG_KSU|CONFIG_KPM|CONFIG_KALLSYMS|CONFIG_KSU_SUSFS|CONFIG_LOCALVERSION" .config \
+            || echo "!! 未找到 KSU/KPM 配置，请检查 SukiSU 集成是否成功"
+
+      - name: 编译内核 (ccache 加速)
+        run: |
+          cd kernel
+          export PATH=$PWD/../clang/clang-r510928/bin:$PATH
+          export CCACHE_DIR=$HOME/.ccache
+          ccache -M 2G
+          # 首次全量编译约 40-90 分钟；二次构建命中 ccache 大幅提速
+          # KCFLAGS=-I. 让内核根进入 include 搜索链 (高通相对 include 必需)
+          make ARCH=arm64 CC="ccache clang" CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- KCFLAGS=-I. -j$(nproc)
+          ls -la arch/arm64/boot/Image
+          echo "--- 内核版本 ---"
+          strings arch/arm64/boot/Image | grep -m1 "Linux version"
+
+      # ============ 6. 原版 boot.img (缓存) ============
+      - name: 恢复原版 boot.img 缓存
+        id: cache-boot
+        uses: actions/cache/restore@v6
+        with:
+          path: boot.img
+          key: boot-oscar-${{ github.event.inputs.los_date }}
+
+      - name: 从 LineageOS nightly 提取原版 boot.img (拿 ramdisk)
+        if: steps.cache-boot.outputs.cache-hit != 'true'
+        run: |
+          LOS_URL="https://mirrorbits.lineageos.org/full/${DEVICE}/${{ github.event.inputs.los_date }}/lineage-${{ github.event.inputs.los_version }}-${{ github.event.inputs.los_date }}-nightly-${DEVICE}-signed.zip"
+          echo "下载: $LOS_URL"
+          curl -sL --retry 3 -o los.zip "$LOS_URL"
+          python3 -c "
+          import zipfile
+          with zipfile.ZipFile('los.zip') as z:
+              names = [n for n in z.namelist() if n == 'boot.img']
+              if not names:
+                  raise SystemExit('boot.img 不在 zip 中: ' + str(z.namelist()[:10]))
+              z.extract('boot.img')
+              print('boot.img 提取成功:', z.getinfo('boot.img').file_size, 'bytes')
+          "
+          rm -f los.zip
+
+      - name: 保存原版 boot.img 缓存
+        if: steps.cache-boot.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: boot.img
+          key: boot-oscar-${{ github.event.inputs.los_date }}
+
+      # ============ 7. 打包 + 上传 ============
+      - name: 解包原 boot + 打包 new_boot.img
+        run: |
+          git clone --depth 1 https://android.googlesource.com/platform/system/tools/mkbootimg mkbootimg
+          python3 mkbootimg/unpack_bootimg.py --boot_img boot.img --out boot_split
+          ls boot_split/
+          # 从解包结果读取原参数 (缺失时用默认值)
+          OS_VER=$(cat boot_split/os_version 2>/dev/null || echo "16.0.0")
+          OS_PATCH=$(cat boot_split/os_patch_level 2>/dev/null || echo "2026-08")
+          HDR_VER=$(cat boot_split/header_version 2>/dev/null || echo "4")
+          echo "os_version=$OS_VER os_patch=$OS_PATCH header=$HDR_VER"
+          python3 mkbootimg/mkbootimg.py \
+            --kernel kernel/arch/arm64/boot/Image \
+            --ramdisk boot_split/ramdisk \
+            --cmdline "$(cat boot_split/cmdline)" \
+            --header_version $HDR_VER \
+            --os_version "$OS_VER" --os_patch_level "$OS_PATCH" \
+            -o new_boot.img
+          echo "=== 打包完成 ==="
+          ls -la new_boot.img
+
+      - name: 验证产物
+        run: |
+          python3 mkbootimg/unpack_bootimg.py --boot_img new_boot.img --out new_split
+          echo "原 boot 内核大小: $(stat -c%s boot_split/kernel)"
+          echo "新 boot 内核大小: $(stat -c%s new_split/kernel)"
+          echo "new_boot.img MD5: $(md5sum new_boot.img)"
+          sha256sum new_boot.img > SHA256SUMS.txt
+
+      - name: 保存 ccache (构建成功才更新，供下次加速)
+        if: success()
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.ccache
+          key: ccache-oscar-${{ github.event.inputs.kernel_branch }}-${{ github.run_id }}
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: oscar-sukisu-${{ github.event.inputs.los_date }}-new_boot
+          path: |
+            new_boot.img
+            SHA256SUMS.txt
+            kernel/arch/arm64/boot/Image
+            kernel/.config
+          if-no-files-found: error
