@@ -1,0 +1,16 @@
+--- a/arch/arm64/Kconfig	2026-08-21 20:48:59.042608600 +0800
++++ b/arch/arm64/Kconfig	2026-08-21 20:48:59.153615800 +0800
+@@ -132,7 +132,12 @@
+ 	select HAVE_ARCH_KGDB
+ 	select HAVE_ARCH_MMAP_RND_BITS
+ 	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if COMPAT
+-	select HAVE_ARCH_PREL32_RELOCATIONS if !LTO_CLANG
++	# [ReSukiSU] 关闭 PREL32 以对齐官方 LTO 内核的 struct kernel_symbol 布局 (24B):
++	# 官方 CONFIG_LTO_CLANG=y 时本 select 不生效, 模块导出符号表用 64 位指针;
++	# 自编译内核不开 LTO, 若保留 select 则 PREL32=y (12B 布局), 内核按 12B 解析
++	# 官方模块 24B 的 __ksymtab -> 符号名全部错位 (空名), 模块间符号引用全断
++	# (如 swr_driver_register 找不到 -> 音频/蓝牙挂)。
++	# select HAVE_ARCH_PREL32_RELOCATIONS if !LTO_CLANG
+ 	select HAVE_ARCH_SECCOMP_FILTER
+ 	select HAVE_ARCH_STACKLEAK
+ 	select HAVE_ARCH_THREAD_STRUCT_WHITELIST

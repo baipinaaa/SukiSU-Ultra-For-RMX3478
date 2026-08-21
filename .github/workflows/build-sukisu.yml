@@ -182,6 +182,21 @@ jobs:
           echo "--- 验证 cfi patch 已应用 ---"
           grep -n "__cfi_slowpath" kernel/module.c
 
+      # ============ 4.8 关闭 PREL32 对齐 struct kernel_symbol 布局 ============
+      # 官方内核 CONFIG_LTO_CLANG=y (clang21 编译), arm64 Kconfig 的
+      #   select HAVE_ARCH_PREL32_RELOCATIONS if !LTO_CLANG
+      # 不生效 -> struct kernel_symbol 用 64 位指针布局 (24B/条目)。
+      # 自编译内核不开 LTO -> PREL32=y (12B/条目), 内核按 12B 解析官方
+      # 模块 24B 的 __ksymtab -> 符号名全部错位 (空名), 模块间符号引用
+      # 全断 (如 swr_driver_register 找不到 -> 音频/蓝牙挂)。
+      # 修复: 注释掉该 select, 强制 PREL32=n, 与官方模块布局对齐。
+      - name: 应用关闭 PREL32 patch (对齐官方符号表布局)
+        run: |
+          cd kernel
+          patch -p1 < ../patches/80_disable_prel32.patch
+          echo "--- 验证 PREL32 patch 已应用 ---"
+          grep -n "HAVE_ARCH_PREL32_RELOCATIONS" arch/arm64/Kconfig
+
       # ============ 5. 修复高通 trace include (clang 兼容) ============
       - name: 修复高通 TRACE_INCLUDE_PATH (clang 兼容)
         run: |
@@ -330,6 +345,12 @@ jobs:
           echo "--- 配置验证 ---"
           grep -E "CONFIG_KSU|CONFIG_KALLSYMS|CONFIG_KSU_SUSFS|CONFIG_LOCALVERSION|CONFIG_DEBUG_FS|CONFIG_PAGE_OWNER|CONFIG_MODVERSIONS" .config \
             || echo "!! 未找到 KSU/SUSFS 配置，请检查 ReSukiSU 集成是否成功"
+          # ★ PREL32 必须为关闭 (80_ patch 注释了 select): 官方 LTO 内核无 PREL32,
+          #   模块 __ksymtab 为 24B/条目; 若 PREL32=y (12B) 则模块导出符号名错位
+          #   (kallsyms 大量 $x 乱码), 模块间符号引用全断 (WiFi/蓝牙/音频挂)。
+          grep "HAVE_ARCH_PREL32" .config \
+            && echo "!! PREL32 仍开启 (80_ patch 未生效?)" \
+            || echo "OK: PREL32 已关闭 (与官方 LTO 内核布局对齐)"
 
       - name: 编译内核 (ccache 加速)
         run: |

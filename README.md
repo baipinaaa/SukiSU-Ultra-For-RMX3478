@@ -129,6 +129,7 @@ SUSFS 9 项能力（内核侧全部开启，由 susfs4ksu 工具按需启用）�
 | nightly 下载失败 | 日期填错或版本前缀不符 | 核对 `los_date` 与 `los_version`，去 lineageos 官网确认该日期存在 |
 | 刷入后卡 logo | ramdisk 与系统版本不匹配 | 用原版 boot.img 救回，确认 `los_date` 正确后重试 |
 | 刷入后 WiFi/蓝牙/音频全挂，dmesg 报 `disagrees about version of symbol module_layout` | 官方内核 `CONFIG_CFI_CLANG=y`（clang21+LTO+LLD），`struct module` 多一个 `cfi_check` 字段 → module_layout CRC 与自编译内核不同，MODVERSIONS 校验拒绝所有 vendor 预编译模块 | 已内置两步修复：① `60_skip_modversions_crc.patch` 跳过 CRC 校验（vermagic 仍校验）② `70_add_cfi_slowpath.patch` 导出假 `__cfi_slowpath`（官方 CFI 模块引用该符号，不开 CFI 会报 unknown symbol）。两条链缺一不可 |
+| 模块能加载但 WiFi/蓝牙/音频仍挂，kallsyms 里模块导出符号全是 `$x` 乱码、地址 0 | 官方内核 `LTO_CLANG=y` 无 PREL32，模块 `__ksymtab` 为 24B/条目；自编译内核 PREL32=y（12B）→ 按 12B 解析官方模块 24B 符号表 → 符号名错位 → 模块间符号引用全断（如 `swr_driver_register` 找不到） | `80_disable_prel32.patch` 注释掉 `arch/arm64/Kconfig` 的 `select HAVE_ARCH_PREL32_RELOCATIONS if !LTO_CLANG`，强制 PREL32=n 与官方布局对齐（无需开 LTO/换编译器） |
 | 想用 KernelSU 而非 ReSukiSU | 方案不同 | 集成脚本换成 KernelSU 的 `kernel/setup.sh`（非 GKI 教程见 kernelsu.org） |
 
 ## 参考
